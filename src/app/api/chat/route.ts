@@ -19,20 +19,25 @@ export async function POST(req: NextRequest) {
       allMessages.push({ role: 'system', content: systemPrompt })
     }
 
-    // 只传最近的消息（避免token超限）
+    // 只传最近的消息（避免token超限），过滤掉system消息
     const recentMessages = messages.slice(-6)
-    for (const m of recentMessages) {
+    const filteredMessages = recentMessages.filter((m: { role: string }) => m.role !== 'system')
+
+    for (const m of filteredMessages) {
+      // 转换角色：ai -> assistant, user -> user
+      const role = m.role === 'ai' ? 'assistant' : 'user'
+
       if (m.image) {
         // 如果有图片，使用多模态消息格式
         allMessages.push({
-          role: m.role,
+          role,
           content: [
             { type: 'image_url', image_url: { url: m.image } },
             { type: 'text', text: m.content }
           ]
         })
       } else {
-        allMessages.push({ role: m.role, content: m.content })
+        allMessages.push({ role, content: m.content })
       }
     }
 
