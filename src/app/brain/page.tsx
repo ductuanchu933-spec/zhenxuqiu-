@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 interface Message {
   role: 'ai' | 'user'
   content: string
+  image?: string  // base64图片
 }
 
 type Step = 'intro' | 'step1' | 'step1_confirm' | 'step2' | 'step2_confirm' | 'step3' | 'done'
@@ -19,6 +20,8 @@ export default function Brain() {
   const [productInfo, setProductInfo] = useState('')
   const [userScenarios, setUserScenarios] = useState('')
   const [userReviews, setUserReviews] = useState('')
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -31,6 +34,26 @@ export default function Brain() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 图片上传处理
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string
+        setUploadedImage(base64)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const removeImage = () => {
+    setUploadedImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
 
   const getStepName = () => {
     switch (step) {
@@ -63,7 +86,15 @@ export default function Brain() {
 
     const userMessage = input.trim()
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+
+    // 如果有上传图片，添加到消息中
+    const userMsg: Message = { role: 'user', content: userMessage }
+    if (uploadedImage) {
+      userMsg.image = uploadedImage
+      setUploadedImage(null)
+    }
+
+    setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
     try {
@@ -180,7 +211,8 @@ e. 限时行动
         body: JSON.stringify({
           messages: messages.concat({ role: 'user', content: userMessage }),
           systemPrompt,
-          apiKey
+          apiKey,
+          image: uploadedImage || null
         })
       })
 
@@ -294,6 +326,25 @@ e. 限时行动
 
       {/* 输入区域 */}
       <div style={styles.inputArea}>
+        {/* 隐藏的文件输入 */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          onChange={handleImageUpload}
+          style={{ display: 'none' }}
+        />
+
+        {/* 图片上传按钮 */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          style={styles.imageBtn}
+          disabled={loading}
+          title="上传图片"
+        >
+          📷
+        </button>
+
         <input
           type="text"
           value={input}
@@ -303,10 +354,18 @@ e. 限时行动
           style={styles.input}
           disabled={loading}
         />
-        <button onClick={sendMessage} style={styles.sendBtn} disabled={loading || !input.trim()}>
+        <button onClick={sendMessage} style={styles.sendBtn} disabled={loading || !input.trim() && !uploadedImage}>
           发送
         </button>
       </div>
+
+      {/* 已上传的图片预览 */}
+      {uploadedImage && (
+        <div style={styles.imagePreview}>
+          <img src={uploadedImage} alt="已上传" style={styles.previewImg} />
+          <button onClick={removeImage} style={styles.removeImgBtn}>✕</button>
+        </div>
+      )}
 
       {/* 完成时显示重新开始按钮 */}
       {step === 'done' && (
@@ -436,6 +495,42 @@ const styles = {
     background: '#fff',
     border: '2px solid #667eea',
     borderRadius: '24px',
+    cursor: 'pointer',
+  },
+  imageBtn: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '22px',
+    border: '2px solid #eee',
+    background: '#fff',
+    fontSize: '20px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePreview: {
+    position: 'relative',
+    display: 'inline-block',
+    margin: '0 16px 12px',
+  },
+  previewImg: {
+    maxWidth: '120px',
+    maxHeight: '120px',
+    borderRadius: '8px',
+    border: '2px solid #eee',
+  },
+  removeImgBtn: {
+    position: 'absolute',
+    top: '-8px',
+    right: '-8px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '12px',
+    background: '#ff4d4f',
+    color: '#fff',
+    border: 'none',
+    fontSize: '12px',
     cursor: 'pointer',
   },
 }

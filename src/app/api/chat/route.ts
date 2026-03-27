@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, systemPrompt, apiKey } = body
+    const { messages, systemPrompt, apiKey, image } = body
 
     if (!apiKey) {
       return NextResponse.json({ error: '缺少API Key' }, { status: 400 })
@@ -13,18 +13,42 @@ export async function POST(req: NextRequest) {
     const API_URL = 'https://api.siliconflow.cn/v1/chat/completions'
 
     // 构建消息列表
-    const allMessages = []
+    const allMessages: any[] = []
 
     if (systemPrompt) {
       allMessages.push({ role: 'system', content: systemPrompt })
     }
 
     // 只传最近的消息（避免token超限）
-    const recentMessages = messages.slice(-10)
-    allMessages.push(...recentMessages.map((m: { role: string; content: string }) => ({
-      role: m.role,
-      content: m.content
-    })))
+    const recentMessages = messages.slice(-6)
+    for (const m of recentMessages) {
+      if (m.image) {
+        // 如果有图片，使用多模态消息格式
+        allMessages.push({
+          role: m.role,
+          content: [
+            { type: 'image_url', image_url: { url: m.image } },
+            { type: 'text', text: m.content }
+          ]
+        })
+      } else {
+        allMessages.push({ role: m.role, content: m.content })
+      }
+    }
+
+    // 如果有新上传的图片
+    if (image) {
+      const lastUserMsg = allMessages[allMessages.length - 1]
+      if (lastUserMsg && lastUserMsg.role === 'user') {
+        allMessages[allMessages.length - 1] = {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: image } },
+            { type: 'text', text: lastUserMsg.content }
+          ]
+        }
+      }
+    }
 
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -33,7 +57,8 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'Qwen/Qwen2.5-7B-Instruct', // 使用硅基流动的模型
+        // 使用支持视觉的模型（需要用户在硅基流动选择支持Vision的模型）
+        model: 'Qwen/Qwen2-VL-7B-Instruct',
         messages: allMessages,
         temperature: 0.7,
         max_tokens: 2048,
