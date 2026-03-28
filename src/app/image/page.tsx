@@ -163,12 +163,21 @@ export default function Image() {
             setCompetitorAnalysis(parsed.competitorAnalysis || [])
             setMyProductAnalysis(parsed.yourImageAnalysis || '')
           } else {
-            console.log('没有找到JSON')
-            setReport({ rawResponse: data.response })
+            console.log('没有找到JSON，直接显示AI回复')
+            // 如果没有JSON，把AI回复存为报告
+            setReport({
+              homogenizationWarning: data.response.substring(0, 500),
+              differentiationSuggestion: data.response.substring(0, 500),
+              yourImageAnalysis: data.response
+            })
           }
         } catch (e) {
           console.log('解析错误:', e)
-          setReport({ rawResponse: data.response })
+          setReport({
+            homogenizationWarning: '解析失败，AI原始回复：' + (data.response || '').substring(0, 500),
+            differentiationSuggestion: '',
+            yourImageAnalysis: ''
+          })
         }
         setStep('result')
       }
