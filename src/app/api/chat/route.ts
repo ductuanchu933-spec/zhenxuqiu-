@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        // 使用支持视觉的模型（需要用户在硅基流动选择支持Vision的模型）
-        model: 'Qwen/Qwen2-VL-7B-Instruct',
+        // 使用更稳定的模型
+        model: 'Qwen/Qwen2.5-7B-Instruct',
         messages: allMessages,
         temperature: 0.7,
         max_tokens: 2048,
