@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        // 使用稳定快速的模型
-        model: 'Qwen/Qwen2.5-7B-Instruct',
+        // 使用MiniMax模型
+        model: 'Pro/MiniMaxAI/MiniMax-M2.5',
         messages: allMessages,
         temperature: 0.7,
         max_tokens: 2048,
