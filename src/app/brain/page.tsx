@@ -26,11 +26,13 @@ export default function Brain() {
     targetUser: '',
     userBenefits: '',
   })
-  const [uploadedImages, setUploadedImages] = useState<string[]>([])
+  const [uploadedMyImages, setUploadedMyImages] = useState<string[]>([])
+  const [uploadedCompetitorImages, setUploadedCompetitorImages] = useState<string[]>([])
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const myImageInputRef = useRef<HTMLInputElement>(null)
+  const competitorImageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const hasKey = localStorage.getItem('api_key')
@@ -43,27 +45,46 @@ export default function Brain() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  // 图片上传处理
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 我的产品图片上传处理
+  const handleMyImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
       Array.from(files).forEach(file => {
         const reader = new FileReader()
         reader.onload = (event) => {
           const base64 = event.target?.result as string
-          setUploadedImages(prev => [...prev, base64].slice(0, 3))
+          setUploadedMyImages(prev => [...prev, base64].slice(0, 3))
         }
         reader.readAsDataURL(file)
       })
     }
   }
 
-  const removeImage = (index: number) => {
-    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+  // 竞品图片上传处理
+  const handleCompetitorImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const base64 = event.target?.result as string
+          setUploadedCompetitorImages(prev => [...prev, base64].slice(0, 3))
+        }
+        reader.readAsDataURL(file)
+      })
+    }
   }
 
-  // 下载报告
-  const downloadReport = () => {
+  const removeMyImage = (index: number) => {
+    setUploadedMyImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const removeCompetitorImage = (index: number) => {
+    setUploadedCompetitorImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 下载报告 - Markdown格式
+  const downloadReportMD = () => {
     if (!report) return
 
     let content = `# 真需求挖掘报告\n\n`
@@ -104,6 +125,76 @@ export default function Brain() {
     URL.revokeObjectURL(url)
   }
 
+  // 下载报告 - Word/HTML格式
+  const downloadReportDOC = () => {
+    if (!report) return
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>真需求挖掘报告</title>
+<style>
+body { font-family: 'Microsoft YaHei', sans-serif; padding: 40px; }
+h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+h2 { color: #667eea; margin-top: 30px; }
+h3 { color: #333; }
+ul { line-height: 1.8; }
+.title-item { background: #f5f5f5; padding: 15px; margin: 10px 0; border-left: 4px solid #667eea; }
+</style>
+</head>
+<body>
+<h1>真需求挖掘报告</h1>
+<p><strong>产品：</strong>${formData.productName}</p>
+<p><strong>目标用户：</strong>${formData.targetUser}</p>
+
+<h2>🎯 第一步：真伪需求判定</h2>
+<div class="title-item">
+<p><strong>真需求判定：</strong>${report.trueDemand}</p>
+<p><strong>核心痛点：</strong>${report.painPoint}</p>
+<p><strong>痒点：</strong>${report.itchPoint}</p>
+<p><strong>爽点：</strong>${report.爽点}</p>
+</div>
+
+<h2>🧠 第二步：场景化痛点</h2>
+${report.scenarios?.map((s, i) => `
+<div class="title-item">
+<h3>场景${i+1}：${s.scene}</h3>
+<p><strong>崩溃瞬间：</strong>${s.崩溃瞬间?.join('、')}</p>
+<p><strong>解决方案：</strong>${s.解决方案?.join('、')}</p>
+</div>
+`).join('')}
+
+<h2>✍️ 第三步：高转化文案</h2>
+<div class="title-item">
+<p><strong>主图标题：</strong></p>
+<ul>
+${report.titles?.map(t => `<li>${t}</li>`).join('')}
+</ul>
+<p><strong>详情页开头：</strong>${report.detailIntro}</p>
+<p><strong>信任板块：</strong>${report.trustSection}</p>
+</div>
+
+${report.imageAnalysis ? `
+<h2>🖼️ 主图分析</h2>
+<div class="title-item">
+<p>${report.imageAnalysis}</p>
+</div>
+` : ''}
+
+</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `真需求报告_${formData.productName}.doc`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const generateReport = async () => {
     if (!formData.productName || !formData.targetUser || !formData.userBenefits) {
       setError('请填写完整信息')
@@ -119,8 +210,15 @@ export default function Brain() {
 
       // 如果有图片，加上图片分析
       let imagePrompt = ''
-      if (uploadedImages.length > 0) {
-        imagePrompt = `\n\n【主图分析】\n用户上传了 ${uploadedImages.length} 张图片，请分析这些主图：\n- 画面构成有什么问题？\n- 文案是否击中用户痛点？\n- 跟竞品比有什么优势和劣势？\n- 如何改进？\n`
+      if (uploadedMyImages.length > 0 || uploadedCompetitorImages.length > 0) {
+        imagePrompt = `\n\n【主图分析】\n`
+        if (uploadedMyImages.length > 0) {
+          imagePrompt += `- 用户上传了 ${uploadedMyImages.length} 张自己的产品主图\n`
+        }
+        if (uploadedCompetitorImages.length > 0) {
+          imagePrompt += `- 用户上传了 ${uploadedCompetitorImages.length} 张竞品主图\n`
+        }
+        imagePrompt += `请分别分析：\n- 你的产品主图的优点和缺点\n- 竞品主图的优点和缺点\n- 你的主图应该如何改进才能超越竞品\n- 给出具体的优化建议\n`
       }
 
       const systemPrompt = `你是专业的电商真需求挖掘顾问，使用梁宁的"痛点/痒点/爽点"框架。
@@ -174,7 +272,8 @@ ${imagePrompt}
           messages: [{ role: 'user', content: '请生成报告' }],
           systemPrompt,
           apiKey,
-          image: uploadedImages.length > 0 ? uploadedImages[0] : null
+          image: uploadedMyImages.length > 0 ? uploadedMyImages[0] : null,
+          competitorImage: uploadedCompetitorImages.length > 0 ? uploadedCompetitorImages[0] : null
         })
       })
 
@@ -230,7 +329,8 @@ ${imagePrompt}
       targetUser: '',
       userBenefits: '',
     })
-    setUploadedImages([])
+    setUploadedMyImages([])
+    setUploadedCompetitorImages([])
     setReport(null)
     setStep('input')
   }
@@ -296,23 +396,46 @@ ${imagePrompt}
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label}>上传主图/竞品图（可选，最多3张）</label>
+            <label style={styles.label}>我的产品主图（可选，最多3张）</label>
             <input
               type="file"
-              ref={fileInputRef}
+              ref={myImageInputRef}
               accept="image/*"
               multiple
-              onChange={handleImageUpload}
+              onChange={handleMyImageUpload}
               style={{ display: 'none' }}
             />
-            <button onClick={() => fileInputRef.current?.click()} style={styles.uploadBtn}>
-              📷 上传图片
+            <button onClick={() => myImageInputRef.current?.click()} style={styles.uploadBtn}>
+              📷 上传我的产品图
             </button>
             <div style={styles.imagePreview}>
-              {uploadedImages.map((img, i) => (
+              {uploadedMyImages.map((img, i) => (
                 <div key={i} style={styles.previewItem}>
-                  <img src={img} alt={`已上传${i+1}`} style={styles.previewImg} />
-                  <button onClick={() => removeImage(i)} style={styles.removeBtn}>✕</button>
+                  <img src={img} alt={`我的产品${i+1}`} style={styles.previewImg} />
+                  <button onClick={() => removeMyImage(i)} style={styles.removeBtn}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.field}>
+            <label style={styles.label}>竞品主图（可选，最多3张）</label>
+            <input
+              type="file"
+              ref={competitorImageInputRef}
+              accept="image/*"
+              multiple
+              onChange={handleCompetitorImageUpload}
+              style={{ display: 'none' }}
+            />
+            <button onClick={() => competitorImageInputRef.current?.click()} style={styles.uploadBtn}>
+              🎯 上传竞品图
+            </button>
+            <div style={styles.imagePreview}>
+              {uploadedCompetitorImages.map((img, i) => (
+                <div key={i} style={styles.previewItem}>
+                  <img src={img} alt={`竞品${i+1}`} style={styles.previewImg} />
+                  <button onClick={() => removeCompetitorImage(i)} style={styles.removeBtn}>✕</button>
                 </div>
               ))}
             </div>
@@ -347,7 +470,7 @@ ${imagePrompt}
       <div style={styles.header}>
         <button onClick={restart} style={styles.backBtn}>← 重新填写</button>
         <span style={styles.title}>真需求挖掘报告</span>
-        <button onClick={downloadReport} style={styles.downloadBtn}>📥 下载</button>
+        <button onClick={downloadReportDOC} style={styles.downloadBtn}>📥 下载</button>
       </div>
 
       <div style={styles.resultCard}>
@@ -392,8 +515,11 @@ ${imagePrompt}
         )}
 
         <div style={styles.resultActions}>
-          <button onClick={downloadReport} style={styles.downloadBtnLarge}>
-            📥 下载报告
+          <button onClick={downloadReportDOC} style={styles.downloadBtnLarge}>
+            📥 下载Word报告
+          </button>
+          <button onClick={downloadReportMD} style={styles.downloadBtnOutline}>
+            📄 下载Markdown
           </button>
           <button onClick={restart} style={styles.restartBtn}>
             🔄 重新生成
@@ -600,11 +726,22 @@ const styles: Record<string, React.CSSProperties> = {
   downloadBtnLarge: {
     flex: 1,
     padding: '14px',
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: 'bold',
     color: '#fff',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  downloadBtnOutline: {
+    flex: 1,
+    padding: '14px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    background: '#fff',
+    border: '2px solid #667eea',
     borderRadius: '8px',
     cursor: 'pointer',
   },

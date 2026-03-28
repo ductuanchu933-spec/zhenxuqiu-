@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, systemPrompt, apiKey, image } = body
+    const { messages, systemPrompt, apiKey, image, competitorImage } = body
 
     if (!apiKey) {
       return NextResponse.json({ error: '缺少API Key' }, { status: 400 })
@@ -41,14 +41,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 如果有新上传的图片
-    if (image) {
+    // 如果有新上传的图片（优先用产品图）
+    const mainImage = image || competitorImage
+    if (mainImage) {
       const lastUserMsg = allMessages[allMessages.length - 1]
       if (lastUserMsg && lastUserMsg.role === 'user') {
         allMessages[allMessages.length - 1] = {
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: image } },
+            { type: 'image_url', image_url: { url: mainImage } },
             { type: 'text', text: lastUserMsg.content }
           ]
         }
