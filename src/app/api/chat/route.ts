@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        // 使用更稳定的模型
-        model: 'Qwen/Qwen3.5-122B-A10B',
+        // 使用稳定快速的模型
+        model: 'Qwen/Qwen2.5-7B-Instruct',
         messages: allMessages,
         temperature: 0.7,
         max_tokens: 2048,
