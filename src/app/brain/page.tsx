@@ -379,7 +379,7 @@ e. 限时行动
   )
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     minHeight: '100vh',
     display: 'flex',
