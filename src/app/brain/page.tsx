@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Step = 'input' | 'analyzing' | 'result'
@@ -9,11 +9,12 @@ interface ReportData {
   trueDemand: string
   painPoint: string
   itchPoint: string
- 爽点: string
-  scenarios: { scene: string;崩溃瞬间: string[];解决方案: string[] }[]
+  爽点: string
+  scenarios: { scene: string; 崩溃瞬间: string[]; 解决方案: string[] }[]
   titles: string[]
   detailIntro: string
   trustSection: string
+  imageAnalysis?: string
 }
 
 export default function Brain() {
@@ -25,9 +26,11 @@ export default function Brain() {
     targetUser: '',
     userBenefits: '',
   })
+  const [uploadedImages, setUploadedImages] = useState<string[]>([])
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const hasKey = localStorage.getItem('api_key')
@@ -38,6 +41,67 @@ export default function Brain() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  // 图片上传处理
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const base64 = event.target?.result as string
+          setUploadedImages(prev => [...prev, base64].slice(0, 3))
+        }
+        reader.readAsDataURL(file)
+      })
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 下载报告
+  const downloadReport = () => {
+    if (!report) return
+
+    let content = `# 真需求挖掘报告\n\n`
+    content += `## 产品：${formData.productName}\n`
+    content += `## 目标用户：${formData.targetUser}\n\n`
+
+    content += `### 🎯 第一步：真伪需求判定\n\n`
+    content += `- 真需求判定：${report.trueDemand}\n`
+    content += `- 核心痛点：${report.painPoint}\n`
+    content += `- 痒点：${report.itchPoint}\n`
+    content += `- 爽点：${report.爽点}\n\n`
+
+    content += `### 🧠 第二步：场景化痛点\n\n`
+    report.scenarios?.forEach((s, i) => {
+      content += `**场景${i+1}：${s.scene}**\n`
+      content += `- 崩溃瞬间：${s.崩溃瞬间?.join('、')}\n`
+      content += `- 解决方案：${s.解决方案?.join('、')}\n\n`
+    })
+
+    content += `### ✍️ 第三步：高转化文案\n\n`
+    content += `**主图标题：**\n`
+    report.titles?.forEach((t, i) => {
+      content += `${i+1}. ${t}\n`
+    })
+    content += `\n**详情页开头：**\n${report.detailIntro}\n\n`
+    content += `**信任板块：**\n${report.trustSection}\n`
+
+    if (report.imageAnalysis) {
+      content += `\n### 🖼️ 主图分析\n\n${report.imageAnalysis}\n`
+    }
+
+    const blob = new Blob([content], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `真需求报告_${formData.productName}.md`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const generateReport = async () => {
@@ -53,6 +117,12 @@ export default function Brain() {
     try {
       const apiKey = localStorage.getItem('api_key')
 
+      // 如果有图片，加上图片分析
+      let imagePrompt = ''
+      if (uploadedImages.length > 0) {
+        imagePrompt = `\n\n【主图分析】\n用户上传了 ${uploadedImages.length} 张图片，请分析这些主图：\n- 画面构成有什么问题？\n- 文案是否击中用户痛点？\n- 跟竞品比有什么优势和劣势？\n- 如何改进？\n`
+      }
+
       const systemPrompt = `你是专业的电商真需求挖掘顾问，使用梁宁的"痛点/痒点/爽点"框架。
 
 【用户信息】
@@ -60,6 +130,7 @@ export default function Brain() {
 - 产品类型：${formData.productType}
 - 目标用户：${formData.targetUser}
 - 已有卖点：${formData.userBenefits}
+${imagePrompt}
 
 【请直接生成完整报告，不要询问用户】
 
@@ -77,6 +148,10 @@ export default function Brain() {
 - 详情页开头文案（50字内）
 - 详情页信任板块
 
+如果有图片，第四步：主图分析
+- 分析上传的主图/竞品主图
+- 给出优化建议
+
 【输出格式】（JSON）
 {
   "trueDemand": "真需求判定",
@@ -88,7 +163,8 @@ export default function Brain() {
   ],
   "titles": ["标题1","标题2","标题3"],
   "detailIntro": "详情页开头",
-  "trustSection": "信任板块"
+  "trustSection": "信任板块",
+  "imageAnalysis": "主图分析（如果没有图片则为空）"
 }`
 
       const response = await fetch('/api/chat', {
@@ -97,7 +173,8 @@ export default function Brain() {
         body: JSON.stringify({
           messages: [{ role: 'user', content: '请生成报告' }],
           systemPrompt,
-          apiKey
+          apiKey,
+          image: uploadedImages.length > 0 ? uploadedImages[0] : null
         })
       })
 
@@ -107,7 +184,6 @@ export default function Brain() {
         setError(data.error)
         setStep('input')
       } else {
-        // 尝试解析JSON
         try {
           const jsonMatch = data.response.match(/\{[\s\S]*\}/)
           if (jsonMatch) {
@@ -154,6 +230,7 @@ export default function Brain() {
       targetUser: '',
       userBenefits: '',
     })
+    setUploadedImages([])
     setReport(null)
     setStep('input')
   }
@@ -218,6 +295,29 @@ export default function Brain() {
             />
           </div>
 
+          <div style={styles.field}>
+            <label style={styles.label}>上传主图/竞品图（可选，最多3张）</label>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              multiple
+              onChange={handleImageUpload}
+              style={{ display: 'none' }}
+            />
+            <button onClick={() => fileInputRef.current?.click()} style={styles.uploadBtn}>
+              📷 上传图片
+            </button>
+            <div style={styles.imagePreview}>
+              {uploadedImages.map((img, i) => (
+                <div key={i} style={styles.previewItem}>
+                  <img src={img} alt={`已上传${i+1}`} style={styles.previewImg} />
+                  <button onClick={() => removeImage(i)} style={styles.removeBtn}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {error && <p style={styles.error}>{error}</p>}
 
           <button onClick={generateReport} disabled={loading} style={styles.button}>
@@ -247,7 +347,7 @@ export default function Brain() {
       <div style={styles.header}>
         <button onClick={restart} style={styles.backBtn}>← 重新填写</button>
         <span style={styles.title}>真需求挖掘报告</span>
-        <span style={styles.placeholder}></span>
+        <button onClick={downloadReport} style={styles.downloadBtn}>📥 下载</button>
       </div>
 
       <div style={styles.resultCard}>
@@ -282,9 +382,23 @@ export default function Brain() {
           <p><strong>信任板块：</strong>{report?.trustSection || '无'}</p>
         </div>
 
-        <button onClick={restart} style={styles.button}>
-          🔄 重新生成
-        </button>
+        {report?.imageAnalysis && (
+          <>
+            <h2 style={styles.resultTitle}>🖼️ 第四步：主图分析</h2>
+            <div style={styles.resultSection}>
+              <p>{report.imageAnalysis}</p>
+            </div>
+          </>
+        )}
+
+        <div style={styles.resultActions}>
+          <button onClick={downloadReport} style={styles.downloadBtnLarge}>
+            📥 下载报告
+          </button>
+          <button onClick={restart} style={styles.restartBtn}>
+            🔄 重新生成
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -317,6 +431,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   placeholder: {
     width: '50px',
+  },
+  downloadBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '14px',
+    color: '#667eea',
+    cursor: 'pointer',
   },
   formCard: {
     background: '#fff',
@@ -367,6 +488,44 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '8px',
     outline: 'none',
     resize: 'vertical',
+  },
+  uploadBtn: {
+    padding: '10px 20px',
+    fontSize: '14px',
+    color: '#667eea',
+    background: '#f0f0ff',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  imagePreview: {
+    display: 'flex',
+    gap: '10px',
+    marginTop: '10px',
+    flexWrap: 'wrap',
+  },
+  previewItem: {
+    position: 'relative',
+  },
+  previewImg: {
+    width: '80px',
+    height: '80px',
+    objectFit: 'cover',
+    borderRadius: '8px',
+    border: '1px solid #eee',
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: '-8px',
+    right: '-8px',
+    width: '20px',
+    height: '20px',
+    borderRadius: '10px',
+    background: '#ff4d4f',
+    color: '#fff',
+    border: 'none',
+    fontSize: '12px',
+    cursor: 'pointer',
   },
   error: {
     color: '#ff4d4f',
@@ -432,5 +591,32 @@ const styles: Record<string, React.CSSProperties> = {
   titleList: {
     paddingLeft: '20px',
     marginBottom: '16px',
+  },
+  resultActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '24px',
+  },
+  downloadBtnLarge: {
+    flex: 1,
+    padding: '14px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#fff',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  restartBtn: {
+    flex: 1,
+    padding: '14px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    background: '#fff',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
   },
 }
