@@ -133,6 +133,9 @@ export default function Image() {
 }`
 
       // 发送图片分析
+      const imageData = competitorImages[0]
+      console.log('上传的图片长度:', imageData?.length || 0)
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,7 +143,7 @@ export default function Image() {
           messages: [{ role: 'user', content: `请分析这 ${competitorImages.length} 张竞品主图。` }],
           systemPrompt,
           apiKey,
-          image: competitorImages[0]
+          image: imageData
         })
       })
 

@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, systemPrompt, apiKey, image, competitorImage } = body
+    const { messages, systemPrompt, apiKey, image } = body
 
     if (!apiKey) {
       return NextResponse.json({ error: '缺少API Key' }, { status: 400 })
     }
+
+    console.log('收到请求, image长度:', image?.length || 0)
 
     // 硅基流动 API 端点
     const API_URL = 'https://api.siliconflow.cn/v1/chat/completions'
@@ -19,55 +21,26 @@ export async function POST(req: NextRequest) {
       allMessages.push({ role: 'system', content: systemPrompt })
     }
 
-    // 只传最近的消息（避免token超限），过滤掉system消息
-    const recentMessages = messages.slice(-6)
-    const filteredMessages = recentMessages.filter((m: { role: string }) => m.role !== 'system')
+    // 如果有图片，直接把图片和消息一起发送
+    if (image) {
+      const userMsg = messages.find((m: any) => m.role === 'user')
+      const textContent = userMsg?.content || '请分析这张图片'
 
-    for (const m of filteredMessages) {
-      // 转换角色：ai -> assistant, user -> user
-      const role = m.role === 'ai' ? 'assistant' : 'user'
-
-      if (m.image) {
-        // 如果有图片，使用多模态消息格式
-        allMessages.push({
-          role,
-          content: [
-            { type: 'image_url', image_url: { url: m.image } },
-            { type: 'text', text: m.content }
-          ]
-        })
-      } else {
-        allMessages.push({ role, content: m.content })
+      allMessages.push({
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: image } },
+          { type: 'text', text: textContent }
+        ]
+      })
+    } else {
+      // 没有图片，普通文本消息
+      for (const m of messages) {
+        allMessages.push({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content })
       }
     }
 
-    // 如果有新上传的图片（优先用产品图）
-    const mainImage = image || competitorImage
-    console.log('接收到的图片:', mainImage ? '有图片' : '无图片')
-    if (mainImage) {
-      // 如果还没有用户消息，添加一个
-      if (allMessages.length === 0 || allMessages[allMessages.length - 1].role !== 'user') {
-        allMessages.push({
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: mainImage } }
-          ]
-        })
-      } else {
-        const lastUserMsg = allMessages[allMessages.length - 1]
-        if (lastUserMsg && lastUserMsg.role === 'user') {
-          allMessages[allMessages.length - 1] = {
-            role: 'user',
-            content: [
-              { type: 'image_url', image_url: { url: mainImage } },
-              { type: 'text', text: typeof lastUserMsg.content === 'string' ? lastUserMsg.content : lastUserMsg.content[0]?.text || '' }
-            ]
-          }
-        }
-      }
-    }
-
-    console.log('最终消息:', JSON.stringify(allMessages).substring(0, 500))
+    console.log('发送的消息:', JSON.stringify(allMessages).substring(0, 300))
 
     const response = await fetch(API_URL, {
       method: 'POST',
