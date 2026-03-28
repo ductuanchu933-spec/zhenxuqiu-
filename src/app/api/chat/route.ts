@@ -43,18 +43,31 @@ export async function POST(req: NextRequest) {
 
     // 如果有新上传的图片（优先用产品图）
     const mainImage = image || competitorImage
+    console.log('接收到的图片:', mainImage ? '有图片' : '无图片')
     if (mainImage) {
-      const lastUserMsg = allMessages[allMessages.length - 1]
-      if (lastUserMsg && lastUserMsg.role === 'user') {
-        allMessages[allMessages.length - 1] = {
+      // 如果还没有用户消息，添加一个
+      if (allMessages.length === 0 || allMessages[allMessages.length - 1].role !== 'user') {
+        allMessages.push({
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: mainImage } },
-            { type: 'text', text: lastUserMsg.content }
+            { type: 'image_url', image_url: { url: mainImage } }
           ]
+        })
+      } else {
+        const lastUserMsg = allMessages[allMessages.length - 1]
+        if (lastUserMsg && lastUserMsg.role === 'user') {
+          allMessages[allMessages.length - 1] = {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: mainImage } },
+              { type: 'text', text: typeof lastUserMsg.content === 'string' ? lastUserMsg.content : lastUserMsg.content[0]?.text || '' }
+            ]
+          }
         }
       }
     }
+
+    console.log('最终消息:', JSON.stringify(allMessages).substring(0, 500))
 
     const response = await fetch(API_URL, {
       method: 'POST',
