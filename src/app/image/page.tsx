@@ -132,12 +132,12 @@ export default function Image() {
   "yourImageAnalysis": "如果用户上传了自己的产品图，对比分析他的主图vs竞品"
 }`
 
-      // 发送第一张图先分析
+      // 发送图片分析
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: `请分析这 ${competitorImages.length} 张竞品主图（由于上传限制，我分开上传给你，这是第一批）` }],
+          messages: [{ role: 'user', content: `请分析这 ${competitorImages.length} 张竞品主图。` }],
           systemPrompt,
           apiKey,
           image: competitorImages[0]
@@ -146,25 +146,34 @@ export default function Image() {
 
       const data = await response.json()
 
+      console.log('API返回:', data)
+
       if (data.error) {
         setError(data.error)
         setStep('input')
       } else {
+        console.log('AI回复:', data.response)
         try {
           const jsonMatch = data.response.match(/\{[\s\S]*\}/)
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0])
+            console.log('解析结果:', parsed)
             setReport(parsed)
             setStatistics(parsed.statistics)
             setCompetitorAnalysis(parsed.competitorAnalysis || [])
             setMyProductAnalysis(parsed.yourImageAnalysis || '')
+          } else {
+            console.log('没有找到JSON')
+            setReport({ rawResponse: data.response })
           }
-        } catch {
+        } catch (e) {
+          console.log('解析错误:', e)
           setReport({ rawResponse: data.response })
         }
         setStep('result')
       }
     } catch (err: any) {
+      console.log('错误:', err)
       setError(err.message || '分析失败，请重试')
       setStep('input')
     }
@@ -460,7 +469,7 @@ ${myProductImage ? `
         <div style={styles.resultCard}>
           <h2 style={styles.resultTitle}>⚠️ 同质化预警</h2>
           <div style={styles.resultSection}>
-            <p>{report?.homogenizationWarning || '无'}</p>
+            <p>{report?.homogenizationWarning || report?.rawResponse || '分析中...'}</p>
           </div>
         </div>
 
