@@ -154,7 +154,12 @@ export default function Image() {
       } else {
         console.log('AI回复:', data.response)
         try {
-          const jsonMatch = data.response.match(/\{[\s\S]*\}/)
+          // 清理JSON中的注释
+          let jsonStr = data.response
+          jsonStr = jsonStr.replace(/\/\/.*$/gm, '') // 移除 // 注释
+          jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '') // 移除 /* */ 注释
+
+          const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0])
             console.log('解析结果:', parsed)
@@ -164,11 +169,10 @@ export default function Image() {
             setMyProductAnalysis(parsed.yourImageAnalysis || '')
           } else {
             console.log('没有找到JSON，直接显示AI回复')
-            // 如果没有JSON，把AI回复存为报告
             setReport({
-              homogenizationWarning: data.response.substring(0, 500),
-              differentiationSuggestion: data.response.substring(0, 500),
-              yourImageAnalysis: data.response
+              homogenizationWarning: jsonStr.substring(0, 500),
+              differentiationSuggestion: jsonStr.substring(0, 500),
+              yourImageAnalysis: jsonStr
             })
           }
         } catch (e) {
