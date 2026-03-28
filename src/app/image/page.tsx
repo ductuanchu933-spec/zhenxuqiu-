@@ -5,11 +5,33 @@ import { useRouter } from 'next/navigation'
 
 type Step = 'input' | 'analyzing' | 'result'
 
+interface CompetitorImage {
+  id: number
+  url: string
+  background: string
+  copy: string
+  copyLines: number
+  composition: string
+  color: string
+  mainSize: string
+  sellingPoints: number
+}
+
+interface Statistics {
+  background: Record<string, number>
+  copy: Record<string, number>
+  composition: Record<string, number>
+  color: Record<string, number>
+}
+
 export default function Image() {
   const router = useRouter()
   const [step, setStep] = useState<Step>('input')
   const [myProductImage, setMyProductImage] = useState<string>('')
+  const [myProductAnalysis, setMyProductAnalysis] = useState<any>(null)
   const [competitorImages, setCompetitorImages] = useState<string[]>([])
+  const [competitorAnalysis, setCompetitorAnalysis] = useState<CompetitorImage[]>([])
+  const [statistics, setStatistics] = useState<Statistics | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState<any>(null)
@@ -54,7 +76,7 @@ export default function Image() {
 
   const analyzeImages = async () => {
     if (competitorImages.length === 0) {
-      setError('请至少上传竞品主图')
+      setError('请至少上传5张竞品主图')
       return
     }
 
@@ -65,48 +87,57 @@ export default function Image() {
     try {
       const apiKey = localStorage.getItem('api_key')
 
-      const systemPrompt = `你是电商主图视觉分析专家。
+      // 构建提示词
+      let imageAnalysisPrompt = ''
+      if (myProductImage) {
+        imageAnalysisPrompt += `\n【你的产品主图】\n用户也上传了自己的产品主图，请一并分析并对比。`
+      }
+
+      const systemPrompt = `你是电商主图视觉分析专家。请分析用户上传的竞品主图，统计各维度信息。
 
 【任务】
-分析用户上传的竞品主图，统计各维度信息，找出同质化点，给出差异化建议。
+1. 逐一分析每张竞品主图的维度信息
+2. 统计各维度的占比
+3. 找出同质化严重的点
+4. 给出差异化建议${imageAnalysisPrompt}
 
 【需要识别的维度】
-1. 背景类型：纯色/场景/拼接/白底
-2. 文案：有无文案/行数/字数
-3. 构图：居中/对角/多图拼接/特写
-4. 配色：主色调/冷暖
-5. 主体大小：大/中/小
-6. 卖点数量：0/1/2/3+
+1. 背景类型：纯色(纯色背景)/场景(生活场景)/拼接(多图拼接)/白底(白色背景)
+2. 文案：有文案/无文案，如果有用几行
+3. 构图：居中/对角/多图拼接/特写/平铺
+4. 配色：红色系/蓝色系/绿色系/白色系/黑色系/彩色/暖色/冷色/中性
+5. 主体大小：主体大(占画面70%+)/主体中(40-70%)/主体小(40%以下)
 
-【输出格式】（JSON）
+【输出格式】（JSON，必须严格JSON格式）
 {
   "competitorAnalysis": [
     {
       "background": "背景类型",
-      "copy": "有无文案",
-      "copyLines": 行数,
+      "copy": "有文案/无文案",
+      "copyLines": 数字,
       "composition": "构图类型",
       "color": "主色调",
       "mainSize": "主体大小",
-      "sellingPoints": 数量
+      "sellingPoints": 数字
     }
   ],
   "statistics": {
-    "background": {"纯色": 占比, "场景": 占比, "拼接": 占比, "白底": 占比},
-    "copy": {"有文案": 占比, "无文案": 占比, "平均行数": 数字},
-    "composition": {"居中": 占比, "对角": 占比, "多图": 占比, "特写": 占比},
-    "color": {"主色调": 占比, "冷暖比例": 比例}
+    "background": {"纯色": 数字, "场景": 数字, "拼接": 数字, "白底": 数字},
+    "copy": {"有文案": 数字, "无文案": 数字, "平均行数": 数字},
+    "composition": {"居中": 数字, "对角": 数字, "多图": 数字, "特写": 数字, "平铺": 数字},
+    "color": {"红色系": 数字, "蓝色系": 数字, "绿色系": 数字, "白色系": 数字, "黑色系": 数字, "彩色": 数字, "暖色": 数字, "冷色": 数字, "中性": 数字}
   },
-  "homogenizationWarning": "同质化严重的维度",
-  "differentiationSuggestion": "差异化切入点建议",
-  "yourImageAnalysis": "如果用户上传了自己的产品图，分析他的主图与竞品的差异"
+  "homogenizationWarning": "同质化分析，指出哪些维度已经高度同质化",
+  "differentiationSuggestion": "差异化建议，从哪个维度突破最有机会",
+  "yourImageAnalysis": "如果用户上传了自己的产品图，对比分析他的主图vs竞品"
 }`
 
+      // 发送第一张图先分析
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: '请分析这些主图' }],
+          messages: [{ role: 'user', content: `请分析这 ${competitorImages.length} 张竞品主图（由于上传限制，我分开上传给你，这是第一批）` }],
           systemPrompt,
           apiKey,
           image: competitorImages[0]
@@ -124,6 +155,9 @@ export default function Image() {
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0])
             setReport(parsed)
+            setStatistics(parsed.statistics)
+            setCompetitorAnalysis(parsed.competitorAnalysis || [])
+            setMyProductAnalysis(parsed.yourImageAnalysis || '')
           }
         } catch {
           setReport({ rawResponse: data.response })
@@ -140,9 +174,124 @@ export default function Image() {
 
   const restart = () => {
     setMyProductImage('')
+    setMyProductAnalysis('')
     setCompetitorImages([])
+    setCompetitorAnalysis([])
+    setStatistics(null)
     setReport(null)
     setStep('input')
+  }
+
+  const downloadReport = () => {
+    if (!report) return
+
+    let content = `# 主图分析报告\n\n`
+    content += `## 统计结果\n\n`
+
+    if (statistics) {
+      content += `### 背景类型\n`
+      for (const [key, val] of Object.entries(statistics.background || {})) {
+        content += `- ${key}: ${val}%\n`
+      }
+
+      content += `\n### 文案\n`
+      content += `- 有文案: ${statistics.copy?.['有文案'] || 0}%\n`
+      content += `- 无文案: ${statistics.copy?.['无文案'] || 0}%\n`
+      content += `- 平均行数: ${statistics.copy?.['平均行数'] || 0}\n`
+
+      content += `\n### 构图\n`
+      for (const [key, val] of Object.entries(statistics.composition || {})) {
+        content += `- ${key}: ${val}%\n`
+      }
+
+      content += `\n### 配色\n`
+      for (const [key, val] of Object.entries(statistics.color || {})) {
+        content += `- ${key}: ${val}%\n`
+      }
+    }
+
+    content += `\n## ⚠️ 同质化预警\n\n${report.homogenizationWarning || '无'}\n\n`
+    content += `## 💡 差异化建议\n\n${report.differentiationSuggestion || '无'}\n\n`
+
+    if (report.yourImageAnalysis) {
+      content += `## 🔍 你的主图分析\n\n${report.yourImageAnalysis}\n`
+    }
+
+    const blob = new Blob([content], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `主图分析报告.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadReportDOC = () => {
+    if (!report || !statistics) return
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>主图分析报告</title>
+<style>
+body { font-family: 'Microsoft YaHei', sans-serif; padding: 40px; }
+h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+h2 { color: #667eea; margin-top: 30px; }
+.stat-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+.stat-table td { padding: 8px; border: 1px solid #ddd; }
+.stat-bar { height: 20px; background: #667eea; border-radius: 3px; }
+.warning { background: #fff5f5; padding: 15px; border-left: 4px solid #ff4d4f; }
+.suggestion { background: #f0f5ff; padding: 15px; border-left: 4px solid #667eea; }
+</style>
+</head>
+<body>
+<h1>🖼️ 主图分析报告</h1>
+
+<h2>📊 统计结果</h2>
+<table class="stat-table">
+<tr><td colspan="2"><strong>背景类型</strong></td></tr>
+${Object.entries(statistics.background || {}).map(([k, v]) => `<tr><td>${k}</td><td><div class="stat-bar" style="width:${v}%"></div> ${v}%</td></tr>`).join('')}
+</table>
+
+<table class="stat-table">
+<tr><td colspan="2"><strong>文案</strong></td></tr>
+<tr><td>有文案</td><td>${statistics.copy?.['有文案'] || 0}%</td></tr>
+<tr><td>无文案</td><td>${statistics.copy?.['无文案'] || 0}%</td></tr>
+<tr><td>平均行数</td><td>${statistics.copy?.['平均行数'] || 0}</td></tr>
+</table>
+
+<table class="stat-table">
+<tr><td colspan="2"><strong>构图</strong></td></tr>
+${Object.entries(statistics.composition || {}).map(([k, v]) => `<tr><td>${k}</td><td><div class="stat-bar" style="width:${v}%"></div> ${v}%</td></tr>`).join('')}
+</table>
+
+<h2>⚠️ 同质化预警</h2>
+<div class="warning">
+<p>${report.homogenizationWarning || '无'}</p>
+</div>
+
+<h2>💡 差异化建议</h2>
+<div class="suggestion">
+<p>${report.differentiationSuggestion || '无'}</p>
+</div>
+
+${myProductImage ? `
+<h2>🔍 你的主图分析</h2>
+<p>${report.yourImageAnalysis || '无'}</p>
+` : ''}
+
+</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `主图分析报告.doc`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (step === 'input') {
@@ -181,7 +330,7 @@ export default function Image() {
             </div>
 
             <div style={styles.field}>
-              <label style={styles.label}>竞品主图 *（最多20张）</label>
+              <label style={styles.label}>竞品主图 *（建议5-20张）</label>
               <input
                 type="file"
                 ref={competitorImageInputRef}
@@ -233,17 +382,114 @@ export default function Image() {
       <div style={styles.header}>
         <button onClick={restart} style={styles.backBtn}>← 重新分析</button>
         <span style={styles.title}>🖼️ 主图分析报告</span>
-        <span style={styles.placeholder}></span>
+        <button onClick={downloadReport} style={styles.downloadBtn}>📥 下载</button>
       </div>
 
       <div style={styles.content}>
+        {/* 统计结果 */}
         <div style={styles.resultCard}>
           <h2 style={styles.resultTitle}>📊 统计结果</h2>
-          <div style={styles.resultSection}>
-            <p>此功能正在完善中，请等待更新...</p>
-          </div>
 
-          <button onClick={restart} style={styles.button}>
+          {statistics && (
+            <div style={styles.statsGrid}>
+              <div style={styles.statItem}>
+                <h4>背景类型</h4>
+                <div style={styles.statBar}>
+                  {Object.entries(statistics.background || {}).map(([key, val]) => (
+                    <div key={key} style={styles.statRow}>
+                      <span>{key}</span>
+                      <div style={styles.barContainer}>
+                        <div style={{ ...styles.bar, width: `${val}%` }}></div>
+                      </div>
+                      <span>{val}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={styles.statItem}>
+                <h4>文案</h4>
+                <div style={styles.statBar}>
+                  {Object.entries(statistics.copy || {}).filter(k => k[0] !== '平均行数').map(([key, val]) => (
+                    <div key={key} style={styles.statRow}>
+                      <span>{key}</span>
+                      <div style={styles.barContainer}>
+                        <div style={{ ...styles.bar, width: `${val}%` }}></div>
+                      </div>
+                      <span>{val}%</span>
+                    </div>
+                  ))}
+                  <p style={styles.avgText}>平均行数: {statistics.copy?.['平均行数'] || 0}</p>
+                </div>
+              </div>
+
+              <div style={styles.statItem}>
+                <h4>构图</h4>
+                <div style={styles.statBar}>
+                  {Object.entries(statistics.composition || {}).map(([key, val]) => (
+                    <div key={key} style={styles.statRow}>
+                      <span>{key}</span>
+                      <div style={styles.barContainer}>
+                        <div style={{ ...styles.bar, width: `${val}%` }}></div>
+                      </div>
+                      <span>{val}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={styles.statItem}>
+                <h4>配色</h4>
+                <div style={styles.statBar}>
+                  {Object.entries(statistics.color || {}).map(([key, val]) => (
+                    <div key={key} style={styles.statRow}>
+                      <span>{key}</span>
+                      <div style={styles.barContainer}>
+                        <div style={{ ...styles.bar, width: `${val}%` }}></div>
+                      </div>
+                      <span>{val}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 同质化预警 */}
+        <div style={styles.resultCard}>
+          <h2 style={styles.resultTitle}>⚠️ 同质化预警</h2>
+          <div style={styles.resultSection}>
+            <p>{report?.homogenizationWarning || '无'}</p>
+          </div>
+        </div>
+
+        {/* 差异化建议 */}
+        <div style={styles.resultCard}>
+          <h2 style={styles.resultTitle}>💡 差异化建议</h2>
+          <div style={styles.resultSection}>
+            <p>{report?.differentiationSuggestion || '无'}</p>
+          </div>
+        </div>
+
+        {/* 你的主图分析 */}
+        {myProductImage && (
+          <div style={styles.resultCard}>
+            <h2 style={styles.resultTitle}>🔍 你的主图分析</h2>
+            <div style={styles.resultSection}>
+              <p>{report?.yourImageAnalysis || '无'}</p>
+            </div>
+          </div>
+        )}
+
+        <div style={styles.resultActions}>
+          <button onClick={downloadReportDOC} style={styles.downloadBtnLarge}>
+            📥 下载Word报告
+          </button>
+          <button onClick={downloadReport} style={styles.downloadBtnOutline}>
+            📄 下载Markdown
+          </button>
+          <button onClick={restart} style={styles.restartBtn}>
             🔄 重新分析
           </button>
         </div>
@@ -280,9 +526,16 @@ const styles: Record<string, React.CSSProperties> = {
   placeholder: {
     width: '50px',
   },
+  downloadBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '14px',
+    color: '#667eea',
+    cursor: 'pointer',
+  },
   content: {
     padding: '20px',
-    maxWidth: '600px',
+    maxWidth: '800px',
     margin: '0 auto',
   },
   formCard: {
@@ -358,19 +611,19 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
   },
   gridImg: {
-    width: '80px',
-    height: '80px',
+    width: '60px',
+    height: '60px',
     objectFit: 'cover',
     borderRadius: '8px',
     border: '1px solid #eee',
   },
   smallRemoveBtn: {
     position: 'absolute',
-    top: '-6px',
-    right: '-6px',
-    width: '18px',
-    height: '18px',
-    borderRadius: '9px',
+    top: '-4px',
+    right: '-4px',
+    width: '16px',
+    height: '16px',
+    borderRadius: '8px',
     background: '#ff4d4f',
     color: '#fff',
     border: 'none',
@@ -418,9 +671,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   resultCard: {
     background: '#fff',
-    padding: '24px',
+    padding: '20px',
     borderRadius: '12px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    marginBottom: '16px',
   },
   resultTitle: {
     fontSize: '16px',
@@ -434,6 +688,77 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '14px',
     lineHeight: '1.8',
     color: '#333',
-    marginBottom: '24px',
+  },
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '20px',
+  },
+  statItem: {
+    marginBottom: '16px',
+  },
+  statBar: {
+    marginTop: '8px',
+  },
+  statRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '6px',
+    fontSize: '13px',
+  },
+  barContainer: {
+    flex: 1,
+    height: '16px',
+    background: '#f0f0f0',
+    borderRadius: '4px',
+    overflow: 'hidden',
+  },
+  bar: {
+    height: '100%',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    borderRadius: '4px',
+  },
+  avgText: {
+    fontSize: '12px',
+    color: '#666',
+    marginTop: '8px',
+  },
+  resultActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '16px',
+  },
+  downloadBtnLarge: {
+    flex: 1,
+    padding: '14px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    color: '#fff',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  downloadBtnOutline: {
+    flex: 1,
+    padding: '14px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    background: '#fff',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  restartBtn: {
+    padding: '14px 24px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    background: '#fff',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
   },
 }
